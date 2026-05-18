@@ -1,0 +1,26 @@
+{
+	email {$ACME_EMAIL}
+	admin off
+}
+
+http:// {
+	redir https://{host}{uri} 308
+}
+
+https:// {
+	log {
+		format json
+		output stdout
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options   nosniff
+		X-Frame-Options          DENY
+		Referrer-Policy          strict-origin-when-cross-origin
+		-Server
+	}
+
+	# --- Redirect rules ---
+	# redir /old-path https://destination.example.com 301
+}
