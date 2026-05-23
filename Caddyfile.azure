@@ -1,6 +1,6 @@
 {
 	admin off
-	auto_https off
+	auto_https off   # Azure ingress owns TLS; Caddy only handles HTTP internally on :80
 }
 
 :80 {
@@ -17,6 +17,420 @@
 		-Server
 	}
 
-	# --- Redirect rules ---
-	# redir /old-path https://destination.example.com 301
+	# --- Single-domain redirect rules ---
+	# If all custom domains configured on the Azure Container App ingress share the same
+	# rules, add redir lines here directly (no host matcher needed).
+	#
+	# redir /old-path          https://destination.example.com          301
+	# redir /temporary-promo   https://promo.example.com                302
+
+	# --- Multi-domain routing ---
+	# Azure Container Apps preserves the Host header for custom domains, so Caddy can
+	# route by hostname even though it only binds :80. Define a named matcher per domain
+	# set, then wrap its redirect rules in a handle block.
+	#
+	# @example-com host example.com www.example.com
+	# handle @example-com {
+	# 	redir /old-path          https://destination.example.com          301
+	# 	redir /temporary-promo   https://promo.example.com                302
+	# 	# Wildcard: {uri} = full path + query string
+	# 	# e.g. GET /blog/my-post?ref=tw → https://blog.example.com/blog/my-post?ref=tw
+	# 	redir /blog/*            https://blog.example.com{uri}            301
+	# }
+	#
+	# @anotherdomain host anotherdomain.com
+	# handle @anotherdomain {
+	# 	redir /old               https://new.anotherdomain.com            301
+	# }
+
+	# =========================================================================
+	# START CoS COLLEGE OF SCIENCE WEBSITES
+	# Redirects for College of Science (CoS) canonical destinations.
+	# All rules are 301 permanent.
+	# Notes:
+	#   - environmental/envsci/envscinew all target the same fixed URL — combined rule.
+	#   - naci redirects to research.oregonstate.edu root; URI preserved.
+	#   - science.oregonstate.edu/bpp redirects to domain root; path not forwarded.
+	# =========================================================================
+
+	@cosine host cosine.oregonstate.edu
+	handle @cosine {
+		redir * https://technology.oregonstate.edu/help 301
+	}
+
+	@envsci-science host environmental.science.oregonstate.edu envsci.science.oregonstate.edu envscinew.science.oregonstate.edu
+	handle @envsci-science {
+		redir * https://graduate.oregonstate.edu/environmental-sciences-graduate-program-esgp 301
+	}
+
+	@healthprofessions-science host healthprofessions.science.oregonstate.edu
+	handle @healthprofessions-science {
+		redir * https://science.oregonstate.edu/premed/premed-application/healthprofessions 301
+	}
+
+	@impact host impact.oregonstate.edu
+	handle @impact {
+		redir * https://science.oregonstate.edu/impact 301
+	}
+
+	@naci-science host naci.science.oregonstate.edu
+	handle @naci-science {
+		redir * https://research.oregonstate.edu{uri} 301
+	}
+
+	@proposals-science host proposals.science.oregonstate.edu
+	handle @proposals-science {
+		redir * https://internal.science.oregonstate.edu/rdu/ecos 301
+	}
+
+	# Specific paths redirected; all other traffic proxied to Drupal on Acquia Edge
+	# with Host header preserved so the CDN routes to the correct site.
+	@science-oregonstate host science.oregonstate.edu
+	handle @science-oregonstate {
+		redir /bgss               https://sites.science.oregonstate.edu/bgss               301
+		redir /bi311              https://sites.science.oregonstate.edu/bi311              301
+		redir /bpp                https://bpp.oregonstate.edu                              301
+		redir /ocean.productivity https://orca.science.oregonstate.edu/ocean.productivity  301
+		redir /osumi              https://sites.science.oregonstate.edu/osumi              301
+		reverse_proxy https://oregonstate.acquiaedge.net {
+			header_up Host {host}
+		}
+	}
+
+	# END CoS COLLEGE OF SCIENCE WEBSITES
+	# =========================================================================
+
+	# =========================================================================
+	# START BIOCHEM WEBSITES
+	# Redirects legacy *.science.oregonstate.edu subdomains to canonical
+	# biochemistry department destinations.  All rules are 301 permanent.
+	# =========================================================================
+
+	@barbar-science host barbar.science.oregonstate.edu
+	handle @barbar-science {
+		redir * https://barbar.biochem.oregonstate.edu{uri} 301
+	}
+
+	@bb host bb.oregonstate.edu
+	handle @bb {
+		redir * https://biochem.oregonstate.edu{uri} 301
+	}
+
+	@biochem-science host biochem.science.oregonstate.edu
+	handle @biochem-science {
+		redir * https://biochem.oregonstate.edu{uri} 301
+	}
+
+	@ccf-science host ccf.science.oregonstate.edu
+	handle @ccf-science {
+		redir * https://gce4all.oregonstate.edu{uri} 301
+	}
+
+	@gombart-science host gombart.science.oregonstate.edu
+	handle @gombart-science {
+		redir * https://gombart.biochem.oregonstate.edu{uri} 301
+	}
+
+	@mehl-science host mehl.science.oregonstate.edu
+	handle @mehl-science {
+		redir * https://mehl.biochem.oregonstate.edu{uri} 301
+	}
+
+	@upf-science host upf.science.oregonstate.edu
+	handle @upf-science {
+		redir * https://upf.biochem.oregonstate.edu{uri} 301
+	}
+
+	# All traffic proxied to Drupal on Acquia Edge; Host header preserved.
+	@biochem host biochem.oregonstate.edu
+	handle @biochem {
+		reverse_proxy https://oregonstate.acquiaedge.net {
+			header_up Host {host}
+		}
+	}
+
+	# END BIOCHEM WEBSITES
+	# =========================================================================
+
+	# =========================================================================
+	# START CEOAS WEBSITES
+	# Redirects legacy geo.* and related subdomains to the College of Earth, Ocean,
+	# and Atmospheric Sciences (CEOAS) canonical destinations.  All rules are 301 permanent.
+	# =========================================================================
+
+	@geo-oregonstate host geo.oregonstate.edu www.geo.oregonstate.edu
+	handle @geo-oregonstate {
+		redir * https://ceoas.oregonstate.edu{uri} 301
+	}
+
+	@geo-orst host geo.orst.edu www.geo.orst.edu
+	handle @geo-orst {
+		redir * https://ceoas.oregonstate.edu{uri} 301
+	}
+
+	@geo-science host geo.science.oregonstate.edu
+	handle @geo-science {
+		redir * https://ceoas.oregonstate.edu{uri} 301
+	}
+
+	@icecorelab-science host icecorelab.science.oregonstate.edu
+	handle @icecorelab-science {
+		redir * https://icecore.ceoas.oregonstate.edu{uri} 301
+	}
+
+	# END CEOAS WEBSITES
+	# =========================================================================
+
+	# =========================================================================
+	# START CHEMISTRY WEBSITES
+	# Redirects legacy chemistry-related subdomains to canonical destinations.
+	# All rules are 301 permanent.
+	# Note: xrd is intentionally reversed — xrd.chem.* → xrd.science.*
+	# =========================================================================
+
+	@chemsafety-chem host chemsafety.chem.oregonstate.edu
+	handle @chemsafety-chem {
+		redir * https://chemistry.oregonstate.edu{uri} 301
+	}
+
+	@mass-spec-science host mass-spec.science.oregonstate.edu
+	handle @mass-spec-science {
+		redir * https://mass-spec.chem.oregonstate.edu{uri} 301
+	}
+
+	@remcho-science host remcho.science.oregonstate.edu
+	handle @remcho-science {
+		redir * https://remcho.chem.oregonstate.edu{uri} 301
+	}
+
+	@subramanian-science host subramanian.science.oregonstate.edu
+	handle @subramanian-science {
+		redir * https://subramanian.chem.oregonstate.edu{uri} 301
+	}
+
+	@xrd-chem host xrd.chem.oregonstate.edu
+	handle @xrd-chem {
+		redir * https://xrd.science.oregonstate.edu{uri} 301
+	}
+
+	# All traffic proxied to Drupal on Acquia Edge; Host header preserved.
+	@chemistry host chemistry.oregonstate.edu
+	handle @chemistry {
+		reverse_proxy https://oregonstate.acquiaedge.net {
+			header_up Host {host}
+		}
+	}
+
+	# END CHEMISTRY WEBSITES
+	# =========================================================================
+
+	# =========================================================================
+	# START INTEGRATIVE BIOLOGY WEBSITES
+	# Redirects legacy *.science.oregonstate.edu subdomains to canonical
+	# Integrative Biology (IB) destinations.  All rules are 301 permanent.
+	# Note: bi21x.science and bi22x.science both target bi22x.ib — combined rule.
+	# =========================================================================
+
+	@bi2x-science host bi21x.science.oregonstate.edu bi22x.science.oregonstate.edu
+	handle @bi2x-science {
+		redir * https://bi22x.ib.oregonstate.edu{uri} 301
+	}
+
+	@lytlelab-science host lytlelab.science.oregonstate.edu
+	handle @lytlelab-science {
+		redir * https://lytlelab.ib.oregonstate.edu{uri} 301
+	}
+
+	@masonlab-science host masonlab.science.oregonstate.edu
+	handle @masonlab-science {
+		redir * https://masonlab.ib.oregonstate.edu{uri} 301
+	}
+
+	# All traffic proxied to Drupal on Acquia Edge; Host header preserved.
+	@ib host ib.oregonstate.edu
+	handle @ib {
+		reverse_proxy https://oregonstate.acquiaedge.net {
+			header_up Host {host}
+		}
+	}
+
+	# END INTEGRATIVE BIOLOGY WEBSITES
+	# =========================================================================
+
+	# =========================================================================
+	# START MATHEMATICS WEBSITES
+	# Mixed redirect types — see per-rule notes.  All rules are 301 permanent.
+	# =========================================================================
+
+	# Specific paths redirected; all other traffic proxied to Drupal on Acquia Edge
+	# with Host header preserved so the CDN routes to the correct site.
+	@math-oregonstate host math.oregonstate.edu
+	handle @math-oregonstate {
+		redir /BridgeBook   https://sites.science.oregonstate.edu/math/BridgeBook 301
+		redir /BridgeBook/* https://sites.science.oregonstate.edu/math{uri}       301
+		reverse_proxy https://oregonstate.acquiaedge.net {
+			header_up Host {host}
+		}
+	}
+
+	# Whole-domain redirect to a fixed URL; path is intentionally not forwarded.
+	@calendar-math host calendar.math.oregonstate.edu
+	handle @calendar-math {
+		redir * https://internal.math.oregonstate.edu/room-reservations 301
+	}
+
+	# END MATHEMATICS WEBSITES
+	# =========================================================================
+
+	# =========================================================================
+	# START MICROBIOLOGY WEBSITES
+	# Redirects legacy microbiology-related subdomains to canonical destinations.
+	# All rules are 301 permanent.
+	# Note: core-values redirects to a fixed URL path; incoming path not forwarded.
+	# Note: biohealth.science and microbiology.science share a target — combined rule.
+	# =========================================================================
+
+	@microbiology-science host biohealth.science.oregonstate.edu microbiology.science.oregonstate.edu
+	handle @microbiology-science {
+		redir * https://microbiology.oregonstate.edu{uri} 301
+	}
+
+	# Whole-domain redirect to a fixed URL; path is intentionally not forwarded.
+	@core-values-microbiology host core-values.microbiology.oregonstate.edu
+	handle @core-values-microbiology {
+		redir * https://microbiology.oregonstate.edu/our-department/diversity-and-inclusion/core-values 301
+	}
+
+	@davidlab-science host davidlab.science.oregonstate.edu
+	handle @davidlab-science {
+		redir * https://davidlab.microbiology.oregonstate.edu{uri} 301
+	}
+
+	@ephys-science host ephys.science.oregonstate.edu
+	handle @ephys-science {
+		redir * https://ephys.microbiology.oregonstate.edu{uri} 301
+	}
+
+	# All traffic proxied to Drupal on Acquia Edge; Host header preserved.
+	@microbiology host microbiology.oregonstate.edu
+	handle @microbiology {
+		reverse_proxy https://oregonstate.acquiaedge.net {
+			header_up Host {host}
+		}
+	}
+
+	# END MICROBIOLOGY WEBSITES
+	# =========================================================================
+
+	# =========================================================================
+	# START PHYSICS WEBSITES
+	# Large mixed set: path-specific redirects on physics.oregonstate.edu, plus
+	# subdomain and cross-domain rules.  All rules are 301 permanent.
+	# Notes:
+	#   - /BridgeBook has both exact and wildcard rules to cover subpaths.
+	#   - / redirects the root only; all other unlisted paths proxy to Drupal backend.
+	#   - /~grahamat/COURSES/ph411 listed before /~grahamat (more specific first).
+	#   - /~grahamat redirects within the same domain to /directory/matt-w-graham.
+	#   - /~minote and /~walshke redirect to separate subdomains; path not forwarded.
+	#   - /~tevian appends /physics suffix; path not forwarded.
+	#   - calendar.physics uses a fixed URL; path intentionally not forwarded.
+	# =========================================================================
+
+	@physics-oregonstate host physics.oregonstate.edu
+	handle @physics-oregonstate {
+		# BridgeBook — exact path and wildcard subpaths both point to math target
+		redir /BridgeBook     https://sites.science.oregonstate.edu/math/BridgeBook 301
+		redir /BridgeBook/*   https://sites.science.oregonstate.edu/math{uri}       301
+		# Root redirect (/ only — not a catch-all)
+		redir /               https://sites.science.oregonstate.edu/physics/meetings 301
+		# Named paths
+		redir /energetics     https://sites.science.oregonstate.edu/physics/energetics   301
+		redir /forum          https://sites.science.oregonstate.edu/forum                301
+		redir /gradreview     https://sites.science.oregonstate.edu/physics/gradreview   301
+		redir /mentorwiki     https://sites.science.oregonstate.edu/physics/mentorwiki   301
+		redir /portfolioswiki https://sites.science.oregonstate.edu/physics/portfolioswiki 301
+		redir /qmaactivities  https://sites.science.oregonstate.edu/physics/coursewikis/portfolioswiki/topic_qmtext.html 301
+		redir /wngrspace      https://sites.science.oregonstate.edu/physics/wngrspace    301
+		# Personal pages — /~grahamat/COURSES/ph411 before /~grahamat (more specific first)
+		redir /~grahamat/COURSES/ph411 https://sites.science.oregonstate.edu/~grahamat/COURSES/ph411 301
+		redir /~craigda  https://sites.science.oregonstate.edu/~craigda                  301
+		redir /~grahamat https://physics.oregonstate.edu/directory/matt-w-graham         301
+		redir /~lazzatid https://sites.science.oregonstate.edu/~lazzatid                 301
+		redir /~leeys    https://sites.science.oregonstate.edu/~leeys                    301
+		redir /~mcintyre https://sites.science.oregonstate.edu/~mcintyre                 301
+		redir /~minote   https://minotlab.physics.oregonstate.edu                        301
+		redir /~ostroveo https://sites.science.oregonstate.edu/~ostroveo                 301
+		redir /~schellmh https://sites.science.oregonstate.edu/~schellmh                 301
+		redir /~sunb     https://sites.science.oregonstate.edu/~sunb                     301
+		redir /~tatej    https://sites.science.oregonstate.edu/~tatej                    301
+		redir /~tevian   https://sites.science.oregonstate.edu/~tevian/physics           301
+		redir /~walshke  https://boxsand.physics.oregonstate.edu                         301
+		# All other paths proxied to Drupal backend; Host header preserved.
+		reverse_proxy https://oregonstate.acquiaedge.net {
+			header_up Host {host}
+		}
+	}
+
+	@www-physics-orst host www.physics.orst.edu
+	handle @www-physics-orst {
+		redir * https://physics.oregonstate.edu{uri} 301
+	}
+
+	# Whole-domain redirect to a fixed URL; path is intentionally not forwarded.
+	@calendar-physics host calendar.physics.oregonstate.edu
+	handle @calendar-physics {
+		redir * https://physics.oregonstate.edu/our-department/internal-resources/room-reservations 301
+	}
+
+	@osuper-science host osuper.science.oregonstate.edu
+	handle @osuper-science {
+		redir * https://osuper.physics.oregonstate.edu{uri} 301
+	}
+
+	# END PHYSICS WEBSITES
+	# =========================================================================
+
+	# =========================================================================
+	# START STATISTICS WEBSITES
+	# Redirects legacy orst.edu subdomain to canonical destination.  301 permanent.
+	# =========================================================================
+
+	@www-stat-orst host www.stat.orst.edu
+	handle @www-stat-orst {
+		redir * https://stat.oregonstate.edu{uri} 301
+	}
+
+	# -------------------------------------------------------------------------
+	# START MYOPINION SURVEYS
+	# Path-specific redirects on myopinion.oregonstate.edu to Qualtrics survey
+	# forms.  Root redirects to the Surveys Research Center page.  301 permanent.
+	# Note: /dmv and /DMV are case variants of the same form — both rules required
+	# as Caddy path matching is case-sensitive.
+	# -------------------------------------------------------------------------
+
+	@myopinion host myopinion.oregonstate.edu
+	handle @myopinion {
+		# Root → Surveys Research Center (fixed URL; path not forwarded)
+		redir /         https://stat.oregonstate.edu/services/surveys-research-center 301
+		# Survey form redirects — fixed Qualtrics URLs; path not forwarded
+		redir /air      https://oregonstate.qualtrics.com/jfe/form/SV_4U4U0yNKbbb6cdM 301
+		redir /dmv      https://oregonstate.qualtrics.com/jfe/form/SV_eDLNjMhZv6ypF8F 301
+		redir /DMV      https://oregonstate.qualtrics.com/jfe/form/SV_eDLNjMhZv6ypF8F 301
+		redir /highways https://oregonstate.qualtrics.com/jfe/form/SV_cV1pv3aJekkNdgp 301
+		redir /roads    https://oregonstate.qualtrics.com/jfe/form/SV_3Jo5ThHFp5J222O 301
+	}
+
+	# END MYOPINION SURVEYS
+	# -------------------------------------------------------------------------
+
+	# All traffic proxied to Drupal on Acquia Edge; Host header preserved.
+	@stat host stat.oregonstate.edu
+	handle @stat {
+		reverse_proxy https://oregonstate.acquiaedge.net {
+			header_up Host {host}
+		}
+	}
+
+	# END STATISTICS WEBSITES
+	# =========================================================================
 }
